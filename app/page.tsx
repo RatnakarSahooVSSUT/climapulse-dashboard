@@ -6,9 +6,6 @@ import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import Chip from "@mui/material/Chip";
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
-import RemoveIcon from "@mui/icons-material/Remove";
 import { useEffect, useState } from "react";
 
 import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
@@ -18,6 +15,7 @@ export default function Home() {
   const [data, setData] = useState<any>(null);
   const [lastUpdated, setLastUpdated] = useState("");
   const [isLive, setIsLive] = useState(false);
+  const [lastTimestamp, setLastTimestamp] = useState<Date | null>(null);
 
   useEffect(() => {
     const q = query(
@@ -32,18 +30,37 @@ export default function Home() {
         const firestoreData = doc.data();
 
         setData(firestoreData);
-        setIsLive(true);
 
         if (firestoreData.timestamp) {
-          setLastUpdated(
-            firestoreData.timestamp.toDate().toLocaleString()
-          );
+          const ts = firestoreData.timestamp.toDate();
+          setLastTimestamp(ts);
+          setLastUpdated(ts.toLocaleString());
+          setIsLive(true);
         }
       }
     });
 
     return () => unsubscribe();
   }, []);
+
+  // 🔥 CHECK IF DEVICE STOPPED SENDING DATA
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!lastTimestamp) return;
+
+      const now = new Date();
+      const diffSeconds =
+        (now.getTime() - lastTimestamp.getTime()) / 1000;
+
+      if (diffSeconds > 15) {
+        setIsLive(false);
+      } else {
+        setIsLive(true);
+      }
+    }, 5000); // check every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [lastTimestamp]);
 
   if (!data) return <Typography>Loading live data...</Typography>;
 
@@ -133,20 +150,23 @@ export default function Home() {
               padding: 3,
               borderRadius: 3,
               backgroundColor: "background.paper",
-              borderTop: "4px solid #1565c0",
+              borderTop: `4px solid ${isLive ? "#2e7d32" : "#d32f2f"}`,
             }}
           >
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               System Health
             </Typography>
+
             <Typography variant="body2" sx={{ marginTop: 1 }}>
-              Device Status: {isLive ? "Operational" : "Offline"}
+              Device Status: {isLive ? "Operational" : "Non-Operational"}
             </Typography>
+
             <Typography variant="body2">
-              Sensor Network: {isLive ? "Active" : "Disconnected"}
+              Sensor Network: {isLive ? "Active" : "Inactive"}
             </Typography>
+
             <Typography variant="body2">
-              Data Stream: {isLive ? "Live" : "Stopped"}
+              Data Stream: {isLive ? "Live" : "Not Live"}
             </Typography>
           </Paper>
         </Grid>
