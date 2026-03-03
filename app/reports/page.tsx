@@ -132,6 +132,7 @@ export default function ReportsPage() {
       if (!time || time < cutoff) return;
 
       filtered.push({
+        rawTimestamp: time.toLocaleString(),
         timeLabel: time.toLocaleString(),
         AQI: Number(d.aqi?.toFixed(3)),
         "PM2.5": Number(d.pm25?.toFixed(3)),
@@ -168,7 +169,7 @@ export default function ReportsPage() {
   const headers = ["Timestamp", ...selectedParams];
 
   const rows = data.map((row) => [
-    `"${new Date(row.timeLabel).toISOString()}"`,
+    `"${row.rawTimestamp}"`,
     ...selectedParams.map((param) => `"${row[param]}"`),
   ]);
 
