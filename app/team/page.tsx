@@ -16,7 +16,7 @@ const teamMembers = [
   {
     name: "Ratnakar Sahoo",
     role: "Full Stack & Embedded Systems Lead",
-    image: "/team/ratnakar.jpg",
+    image: "/team/Ratnakar.jpg",
   },
   {
     name: "Priyadarshani Mahapatra",
