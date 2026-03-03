@@ -11,25 +11,44 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import RemoveIcon from "@mui/icons-material/Remove";
 import { useEffect, useState } from "react";
 
+import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+
 export default function Home() {
+  const [data, setData] = useState<any>(null);
   const [lastUpdated, setLastUpdated] = useState("");
+  const [isLive, setIsLive] = useState(false);
 
   useEffect(() => {
-    setLastUpdated(new Date().toLocaleString());
+    const q = query(
+      collection(db, "sensor_data"),
+      orderBy("timestamp", "desc"),
+      limit(1)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const doc = snapshot.docs[0];
+        const firestoreData = doc.data();
+
+        setData(firestoreData);
+        setIsLive(true);
+
+        if (firestoreData.timestamp) {
+          setLastUpdated(
+            firestoreData.timestamp.toDate().toLocaleString()
+          );
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const data = {
-    pm25: 42,
-    pm10: 68,
-    co2: 540,
-    co: 3.2,
-    ch4: 1.8,
-    no2: 0.04,
-    temperature: 29,
-    humidity: 63,
-    pressure: 1012,
-    aqi: 87,
-  };
+  if (!data) return <Typography>Loading live data...</Typography>;
+
+  const formatValue = (val: any) =>
+    typeof val === "number" ? Number(val.toFixed(3)) : val;
 
   const getStatus = (value: number, type: string) => {
     if (type === "aqi") {
@@ -40,12 +59,6 @@ export default function Home() {
     if (value < 50) return { label: "Normal", color: "#1e88e5" };
     if (value < 100) return { label: "Elevated", color: "#1565c0" };
     return { label: "High", color: "#0d47a1" };
-  };
-
-  const getTrendIcon = (direction: string) => {
-    if (direction === "up") return <ArrowUpwardIcon fontSize="small" />;
-    if (direction === "down") return <ArrowDownwardIcon fontSize="small" />;
-    return <RemoveIcon fontSize="small" />;
   };
 
   const getAQIGradient = (aqi: number) => {
@@ -82,8 +95,7 @@ export default function Home() {
           Environmental Summary
         </Typography>
         <Typography variant="body2" sx={{ marginTop: 1 }}>
-          Air quality remains within acceptable limits. Minor elevation detected in PM10 levels.
-          All gas sensors operational. No abnormal environmental risk detected.
+          Real-time monitoring active. Sensor data streaming from device.
         </Typography>
       </Paper>
 
@@ -101,7 +113,7 @@ export default function Home() {
           >
             <Typography variant="subtitle2">Air Quality Index</Typography>
             <Typography variant="h4" sx={{ fontWeight: 700 }}>
-              {data.aqi}
+              {formatValue(data.aqi)}
             </Typography>
             <Chip
               label={getStatus(data.aqi, "aqi").label}
@@ -128,13 +140,13 @@ export default function Home() {
               System Health
             </Typography>
             <Typography variant="body2" sx={{ marginTop: 1 }}>
-              Device Status: Operational
+              Device Status: {isLive ? "Operational" : "Offline"}
             </Typography>
             <Typography variant="body2">
-              Sensor Network: Active
+              Sensor Network: {isLive ? "Active" : "Disconnected"}
             </Typography>
             <Typography variant="body2">
-              Data Stream: Live
+              Data Stream: {isLive ? "Live" : "Stopped"}
             </Typography>
           </Paper>
         </Grid>
@@ -144,30 +156,24 @@ export default function Home() {
 
       {/* PARAMETERS GRID */}
       <Grid container spacing={2}>
-        <MetricCard title="PM2.5" unit="µg/m³" value={data.pm25} trend="up" />
-        <MetricCard title="PM10" unit="µg/m³" value={data.pm10} trend="up" />
-        <MetricCard title="CO₂" unit="ppm" value={data.co2} trend="stable" />
-        <MetricCard title="CO" unit="ppm" value={data.co} trend="down" />
-        <MetricCard title="CH₄" unit="ppm" value={data.ch4} trend="stable" />
-        <MetricCard title="NO₂" unit="ppm" value={data.no2} trend="stable" />
-        <MetricCard title="Temperature" unit="°C" value={data.temperature} trend="up" />
-        <MetricCard title="Humidity" unit="%" value={data.humidity} trend="stable" />
-        <MetricCard title="Pressure" unit="hPa" value={data.pressure} trend="stable" />
+        <MetricCard title="PM2.5" unit="µg/m³" value={formatValue(data.pm25)} />
+        <MetricCard title="PM10" unit="µg/m³" value={formatValue(data.pm10)} />
+        <MetricCard title="CO₂" unit="ppm" value={formatValue(data.co2)} />
+        <MetricCard title="CO" unit="ppm" value={formatValue(data.co)} />
+        <MetricCard title="CH₄" unit="ppm" value={formatValue(data.ch4)} />
+        <MetricCard title="NO₂" unit="ppm" value={formatValue(data.no2)} />
+        <MetricCard title="Temperature" unit="°C" value={formatValue(data.temperature)} />
+        <MetricCard title="Humidity" unit="%" value={formatValue(data.humidity)} />
+        <MetricCard title="Pressure" unit="hPa" value={formatValue(data.pressure)} />
       </Grid>
     </>
   );
 }
 
 /* METRIC CARD */
-function MetricCard({ title, value, unit, trend }: any) {
-  const statusColor = value < 50 ? "#1e88e5" : value < 100 ? "#1565c0" : "#0d47a1";
-
-  const TrendIcon =
-    trend === "up"
-      ? ArrowUpwardIcon
-      : trend === "down"
-      ? ArrowDownwardIcon
-      : RemoveIcon;
+function MetricCard({ title, value, unit }: any) {
+  const statusColor =
+    value < 50 ? "#1e88e5" : value < 100 ? "#1565c0" : "#0d47a1";
 
   return (
     <Grid size={{ xs: 12, md: 4 }}>
@@ -178,23 +184,15 @@ function MetricCard({ title, value, unit, trend }: any) {
           backgroundColor: "background.paper",
           borderTop: `4px solid ${statusColor}`,
           boxShadow: "0px 4px 12px rgba(21,101,192,0.15)",
-          transition: "0.3s",
-          "&:hover": {
-            transform: "translateY(-3px)",
-            boxShadow: "0px 8px 20px rgba(21,101,192,0.3)",
-          },
         }}
       >
         <Typography variant="subtitle2" sx={{ opacity: 0.7 }}>
           {title}
         </Typography>
 
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            {value} {unit}
-          </Typography>
-          <TrendIcon fontSize="small" />
-        </Box>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          {value} {unit}
+        </Typography>
       </Paper>
     </Grid>
   );

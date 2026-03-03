@@ -12,7 +12,6 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Stack,
-  Divider,
   Table,
   TableBody,
   TableCell,
@@ -29,12 +28,19 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  Label,
 } from "recharts";
 
 import { useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+
+import {
+  collection,
+  query,
+  orderBy,
+  getDocs,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 /* ---------------- Colors ---------------- */
 const paramColors: Record<string, string> = {
@@ -64,139 +70,140 @@ const paramUnits: Record<string, string> = {
   Pressure: "hPa",
 };
 
-/* ---------------- Dummy Timeline Generator ---------------- */
-const generateDummyData = (
-  points: number,
-  intervalMinutes: number,
-  includeDate: boolean
-) => {
-  const now = new Date();
-  const data = [];
+/* ---------------- Executive Summary ---------------- */
+const narrative = `This Environmental Monitoring Report provides a consolidated technical evaluation of atmospheric and air quality parameters recorded during the selected monitoring interval. The analysis includes statistical characterization (minimum, average, and maximum values), temporal trend visualization, and parameter-specific interpretation to assess environmental stability, pollutant variability, and atmospheric behavior patterns. The report supports performance evaluation, compliance review, operational oversight, and structured environmental assessment.`;
 
-  for (let i = points - 1; i >= 0; i--) {
-    const timestamp = new Date(
-      now.getTime() - i * intervalMinutes * 60000
-    );
-
-    data.push({
-      isoTimestamp: timestamp.toISOString(),
-      timeLabel: includeDate
-        ? timestamp.toLocaleString()
-        : timestamp.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-      AQI: 80 + Math.random() * 60,
-      "PM2.5": 20 + Math.random() * 40,
-      PM10: 40 + Math.random() * 60,
-      CO2: 400 + Math.random() * 100,
-      CO: 1 + Math.random(),
-      CH4: 2 + Math.random(),
-      NO2: 10 + Math.random() * 15,
-      Temperature: 28 + Math.random() * 8,
-      Humidity: 50 + Math.random() * 30,
-      Pressure: 1000 + Math.random() * 20,
-    });
-  }
-
-  return data;
+/* ---------------- Interpretations ---------------- */
+const interpretations: Record<string, string> = {
+  AQI:
+    "The Air Quality Index (AQI) represents a composite atmospheric pollution indicator derived from multiple pollutant concentrations. Lower index values correspond to improved air quality, while elevated values reflect increased environmental stress levels.",
+  "PM2.5":
+    "PM2.5 denotes fine particulate matter capable of remaining suspended in the atmosphere. Elevated concentrations may influence atmospheric clarity and respiratory exposure dynamics.",
+  PM10:
+    "PM10 represents coarse particulate matter associated with dust, mechanical emissions, and atmospheric dispersion variability.",
+  CO2:
+    "Carbon dioxide (CO₂) concentration reflects atmospheric gas balance and ventilation efficiency within the monitored environment.",
+  CO:
+    "Carbon monoxide (CO) concentration indicates combustion-related emissions. Variations may reflect changes in emission intensity or localized sources.",
+  CH4:
+    "Methane (CH₄) levels represent trace hydrocarbon presence and may indicate biogenic or industrial emission activity.",
+  NO2:
+    "Nitrogen dioxide (NO₂) levels are associated with combustion processes and vehicular emissions, reflecting atmospheric dispersion patterns.",
+  Temperature:
+    "Ambient temperature reflects thermal environmental conditions and short-term climatic behavior across the monitoring interval.",
+  Humidity:
+    "Relative humidity represents atmospheric moisture content and influences environmental stability and thermal perception.",
+  Pressure:
+    "Atmospheric pressure indicates air mass movement and meteorological transitions affecting environmental conditions.",
 };
 
 export default function ReportsPage() {
   const [timeRange, setTimeRange] = useState("1H");
   const [selectedParams, setSelectedParams] = useState<string[]>(["AQI"]);
   const [reportGenerated, setReportGenerated] = useState(false);
+  const [data, setData] = useState<any[]>([]);
 
-  /* ---------------- Time Logic ---------------- */
-  let points = 10;
-  let interval = 10;
-  let includeDate = false;
-
-  if (timeRange === "30M") {
-    points = 6;
-    interval = 5;
-  } else if (timeRange === "6H") {
-    points = 12;
-    interval = 30;
-  } else if (timeRange === "24H") {
-    points = 24;
-    interval = 60;
-    includeDate = true;
-  }
-
-  const data = generateDummyData(points, interval, includeDate);
-
-  const handleParamToggle = (param: string) => {
-    setSelectedParams((prev) =>
-      prev.includes(param)
-        ? prev.filter((p) => p !== param)
-        : [...prev, param]
-    );
+  const getMinutes = (range: string) => {
+    if (range === "30M") return 30;
+    if (range === "1H") return 60;
+    if (range === "6H") return 360;
+    if (range === "24H") return 1440;
+    return 60;
   };
 
-  const narrative = `This Environmental Monitoring Report provides a consolidated technical evaluation of atmospheric and air quality parameters recorded during the selected monitoring interval. The analysis includes statistical characterization (minimum, average, and maximum values), temporal trend visualization, and parameter-specific interpretation to assess environmental stability, pollutant variability, and atmospheric behavior patterns. The report supports performance evaluation, compliance review, operational oversight, and structured environmental assessment.`;
+  const fetchData = async () => {
+    const q = query(
+      collection(db, "sensor_data"),
+      orderBy("timestamp", "asc")
+    );
 
-  const interpretations: Record<string, string> = {
-  AQI:
-    "The Air Quality Index (AQI) represents a composite atmospheric pollution indicator derived from multiple pollutant concentrations. Lower index values correspond to improved air quality, while elevated values reflect increased environmental stress levels.",
+    const snapshot = await getDocs(q);
 
-  "PM2.5":
-    "PM2.5 denotes fine particulate matter capable of remaining suspended in the atmosphere. Elevated concentrations may influence atmospheric clarity and respiratory exposure dynamics.",
+    const now = new Date();
+    const cutoff = new Date(
+      now.getTime() - getMinutes(timeRange) * 60000
+    );
 
-  PM10:
-    "PM10 represents coarse particulate matter associated with dust, mechanical emissions, and atmospheric dispersion variability.",
+    const filtered: any[] = [];
 
-  CO2:
-    "Carbon dioxide (CO₂) concentration reflects atmospheric gas balance and ventilation efficiency within the monitored environment.",
+    snapshot.forEach((doc) => {
+      const d = doc.data();
+      const time = d.timestamp?.toDate();
+      if (!time || time < cutoff) return;
 
-  CO:
-    "Carbon monoxide (CO) concentration indicates combustion-related emissions. Variations may reflect changes in emission intensity or localized sources.",
+      filtered.push({
+        timeLabel: time.toLocaleString(),
+        AQI: Number(d.aqi?.toFixed(3)),
+        "PM2.5": Number(d.pm25?.toFixed(3)),
+        PM10: Number(d.pm10?.toFixed(3)),
+        CO2: Number(d.co2?.toFixed(3)),
+        CO: Number(d.co?.toFixed(3)),
+        CH4: Number(d.ch4?.toFixed(3)),
+        NO2: Number(d.no2?.toFixed(3)),
+        Temperature: Number(d.temperature?.toFixed(3)),
+        Humidity: Number(d.humidity?.toFixed(3)),
+        Pressure: Number(d.pressure?.toFixed(3)),
+      });
+    });
 
-  CH4:
-    "Methane (CH₄) levels represent trace hydrocarbon presence and may indicate biogenic or industrial emission activity.",
+    setData(filtered);
+    setReportGenerated(true);
+  };
 
-  NO2:
-    "Nitrogen dioxide (NO₂) levels are associated with combustion processes and vehicular emissions, reflecting atmospheric dispersion patterns.",
+  const computeStats = (values: number[]) => {
+    const n = values.length;
+    const avg = values.reduce((a, b) => a + b, 0) / n;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const variance =
+      values.reduce((sum, val) => sum + (val - avg) ** 2, 0) / n;
+    const stdDev = Math.sqrt(variance);
 
-  Temperature:
-    "Ambient temperature reflects thermal environmental conditions and short-term climatic behavior across the monitoring interval.",
+    return { min, avg, max, stdDev, samples: n };
+  };
 
-  Humidity:
-    "Relative humidity represents atmospheric moisture content and influences environmental stability and thermal perception.",
+  const downloadCSV = () => {
+  if (!data.length) return;
 
-  Pressure:
-    "Atmospheric pressure indicates air mass movement and meteorological transitions affecting environmental conditions.",
+  const headers = ["Timestamp", ...selectedParams];
+
+  const rows = data.map((row) => [
+    `"${new Date(row.timeLabel).toISOString()}"`,
+    ...selectedParams.map((param) => `"${row[param]}"`),
+  ]);
+
+  const csvContent =
+    "\uFEFF" + // UTF-8 BOM for Excel
+    [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+
+  const blob = new Blob([csvContent], {
+    type: "text/csv;charset=utf-8;",
+  });
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "ClimaPulse_Environmental_Report.csv";
+  link.click();
 };
-  /* ---------------- Professional PDF Generator ---------------- */
+
   const downloadPDF = async () => {
     const pdf = new jsPDF("p", "mm", "a4");
-
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 12;
     const contentWidth = pageWidth - margin * 2;
-
     let yPosition = 20;
     let pageNumber = 1;
 
     const addHeader = () => {
       pdf.setFontSize(15);
       pdf.text("ClimaPulse Environmental Monitoring Report", margin, 10);
-
       pdf.setFontSize(9);
-      pdf.text(
-        `Generated: ${new Date().toLocaleString()}`,
-        margin,
-        15
-      );
-
+      pdf.text(`Generated: ${new Date().toLocaleString()}`, margin, 15);
       pdf.setFontSize(9);
-      pdf.text(
-        `Page ${pageNumber}`,
-        pageWidth - margin,
-        pageHeight - 5,
-        { align: "right" }
-      );
+      pdf.text(`Page ${pageNumber}`, pageWidth - margin, pageHeight - 5, {
+        align: "right",
+      });
 
       pdf.setTextColor(230);
       pdf.setFontSize(60);
@@ -208,7 +215,6 @@ export default function ReportsPage() {
     };
 
     addHeader();
-
     yPosition += 10;
 
     pdf.setFontSize(13);
@@ -216,28 +222,20 @@ export default function ReportsPage() {
     yPosition += 8;
 
     pdf.setFontSize(10);
-
-    const summaryLines = pdf.splitTextToSize(
-        narrative,
-        contentWidth
-    );
-
+    const summaryLines = pdf.splitTextToSize(narrative, contentWidth);
     pdf.text(summaryLines, margin, yPosition, {
-        maxWidth: contentWidth,
-        align: "justify",
+      maxWidth: contentWidth,
+      align: "justify",
     });
     yPosition += summaryLines.length * 5 + 10;
 
-    /* Render each parameter block individually */
     for (const param of selectedParams) {
       const element = document.getElementById(`report-${param}`);
       if (!element) continue;
 
       const canvas = await html2canvas(element, { scale: 2 });
       const imgData = canvas.toDataURL("image/png");
-
-      const imgHeight =
-        (canvas.height * contentWidth) / canvas.width;
+      const imgHeight = (canvas.height * contentWidth) / canvas.width;
 
       if (yPosition + imgHeight > pageHeight - 15) {
         pdf.addPage();
@@ -246,15 +244,7 @@ export default function ReportsPage() {
         yPosition = 20;
       }
 
-      pdf.addImage(
-        imgData,
-        "PNG",
-        margin,
-        yPosition,
-        contentWidth,
-        imgHeight
-      );
-
+      pdf.addImage(imgData, "PNG", margin, yPosition, contentWidth, imgHeight);
       yPosition += imgHeight + 10;
     }
 
@@ -267,6 +257,7 @@ export default function ReportsPage() {
         ClimaPulse Environmental Report System
       </Typography>
 
+      {/* Time Range - Styled */}
       <Paper sx={{ padding: 3, borderRadius: 2, marginBottom: 3 }}>
         <Typography variant="h6">Time Range</Typography>
         <Stack direction="row" spacing={2} sx={{ marginTop: 2 }}>
@@ -274,6 +265,17 @@ export default function ReportsPage() {
             value={timeRange}
             exclusive
             onChange={(e, value) => value && setTimeRange(value)}
+            sx={{
+              "& .MuiToggleButton-root": {
+                borderColor: "#1976d2",
+                color: "#1976d2",
+                fontWeight: 500,
+              },
+              "& .Mui-selected": {
+                backgroundColor: "#1976d2 !important",
+                color: "#fff !important",
+              },
+            }}
           >
             <ToggleButton value="30M">30 Min</ToggleButton>
             <ToggleButton value="1H">1 Hour</ToggleButton>
@@ -283,6 +285,7 @@ export default function ReportsPage() {
         </Stack>
       </Paper>
 
+      {/* Parameter Selection - Colored */}
       <Paper sx={{ padding: 3, borderRadius: 2, marginBottom: 3 }}>
         <Typography variant="h6">Select Parameters</Typography>
         <FormGroup sx={{ marginTop: 2 }}>
@@ -293,10 +296,31 @@ export default function ReportsPage() {
                   control={
                     <Checkbox
                       checked={selectedParams.includes(param)}
-                      onChange={() => handleParamToggle(param)}
+                      sx={{
+                        color: paramColors[param],
+                        "&.Mui-checked": {
+                          color: paramColors[param],
+                        },
+                      }}
+                      onChange={() =>
+                        setSelectedParams((prev) =>
+                          prev.includes(param)
+                            ? prev.filter((p) => p !== param)
+                            : [...prev, param]
+                        )
+                      }
                     />
                   }
-                  label={param}
+                  label={
+                    <Typography
+                      sx={{
+                        color: paramColors[param],
+                        fontWeight: 500,
+                      }}
+                    >
+                      {param}
+                    </Typography>
+                  }
                 />
               </Grid>
             ))}
@@ -304,22 +328,14 @@ export default function ReportsPage() {
         </FormGroup>
       </Paper>
 
-      <Button
-        variant="contained"
-        sx={{ marginBottom: 3 }}
-        onClick={() => setReportGenerated(true)}
-      >
+      <Button variant="contained" sx={{ mb: 3 }} onClick={fetchData}>
         Generate Report
       </Button>
 
       {reportGenerated &&
         selectedParams.map((param) => {
-          const values = data.map((d: any) => d[param]);
-          const avg =
-            values.reduce((a: number, b: number) => a + b, 0) /
-            values.length;
-          const min = Math.min(...values);
-          const max = Math.max(...values);
+          const values = data.map((d) => d[param]);
+          const stats = computeStats(values);
 
           return (
             <Paper
@@ -337,22 +353,24 @@ export default function ReportsPage() {
               <Table>
                 <TableBody>
                   <TableRow>
+                    <TableCell>Samples</TableCell>
+                    <TableCell>{stats.samples}</TableCell>
+                  </TableRow>
+                  <TableRow>
                     <TableCell>Minimum</TableCell>
-                    <TableCell>
-                      {min.toFixed(2)} {paramUnits[param]}
-                    </TableCell>
+                    <TableCell>{stats.min.toFixed(3)}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>Average</TableCell>
-                    <TableCell>
-                      {avg.toFixed(2)} {paramUnits[param]}
-                    </TableCell>
+                    <TableCell>{stats.avg.toFixed(3)}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>Maximum</TableCell>
-                    <TableCell>
-                      {max.toFixed(2)} {paramUnits[param]}
-                    </TableCell>
+                    <TableCell>{stats.max.toFixed(3)}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>Standard Deviation</TableCell>
+                    <TableCell>{stats.stdDev.toFixed(3)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -360,18 +378,17 @@ export default function ReportsPage() {
               <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={data}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timeLabel">
-                    <Label value="Time" position="insideBottom" />
-                  </XAxis>
-                  <YAxis>
-                    <Label
-                      value={paramUnits[param]}
-                      angle={-90}
-                      position="insideLeft"
-                    />
-                  </YAxis>
-                  <Tooltip />
-          
+                  <XAxis dataKey="timeLabel" />
+                  <YAxis />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#ffffff",
+                      color: "#000000",
+                      border: "1px solid #ccc",
+                    }}
+                    labelStyle={{ color: "#000000" }}
+                    itemStyle={{ color: "#000000" }}
+                  />
                   <Line
                     type="monotone"
                     dataKey={param}
@@ -386,18 +403,14 @@ export default function ReportsPage() {
                 sx={{
                   marginTop: 2,
                   padding: 2,
-                  backgroundColor: (theme) =>
-                  theme.palette.mode === "dark" ? "#ffffff" : "#f6f9ff",
+                  backgroundColor: "#ffffff",
                   borderLeft: `3px solid ${paramColors[param]}`,
                   borderRadius: 1.5,
                 }}
               >
                 <Typography
                   variant="body2"
-                  sx={{
-                    lineHeight: 1.7,
-                    color: "#000000",
-                  }}
+                  sx={{ lineHeight: 1.7, color: "#000000" }}
                 >
                   {interpretations[param]}
                 </Typography>
@@ -407,13 +420,23 @@ export default function ReportsPage() {
         })}
 
       {reportGenerated && (
-        <Button
-          variant="outlined"
-          startIcon={<DownloadIcon />}
-          onClick={downloadPDF}
-        >
-          Download PDF
-        </Button>
+        <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={downloadCSV}
+          >
+            Download CSV
+          </Button>
+
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={downloadPDF}
+          >
+            Download PDF
+          </Button>
+        </Stack>
       )}
     </>
   );
