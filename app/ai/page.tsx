@@ -33,6 +33,7 @@ export default function AIPredictionPage() {
   const [currentTemp, setCurrentTemp] = useState(0);
   const [aqiConfidence, setAqiConfidence] = useState(0);
   const [tempConfidence, setTempConfidence] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState("");
 
   // 🔥 FETCH DATA FROM API
   const fetchData = async () => {
@@ -46,6 +47,8 @@ export default function AIPredictionPage() {
       );
       const data = await res.json();
 
+      if (data.error) return; // avoid breaking UI
+
       setCurrentAQI(data.current.aqi);
       setCurrentTemp(data.current.temperature);
       setAqiConfidence(data.summary.aqi_confidence);
@@ -58,6 +61,9 @@ export default function AIPredictionPage() {
       }));
 
       setForecastData(formatted);
+
+      // ✅ update timestamp
+      setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
       console.error("API Error:", err);
     }
@@ -68,11 +74,13 @@ export default function AIPredictionPage() {
     fetchData();
   }, [timeRange]);
 
-  // 🔥 AUTO REFRESH EVERY 15s
+  // 🔥 AUTO REFRESH (60 sec + tab active check)
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchData();
-    }, 15000);
+      if (!document.hidden) {
+        fetchData();
+      }
+    }, 60000); // ✅ 60 seconds
 
     return () => clearInterval(interval);
   }, [timeRange]);
@@ -100,9 +108,21 @@ export default function AIPredictionPage() {
 
   return (
     <>
-      <Typography variant="h4" sx={{ fontWeight: 600 }} gutterBottom>
-        AI Environmental Intelligence
-      </Typography>
+      {/* 🔥 HEADER WITH LIVE STATUS */}
+      <Box display="flex" justifyContent="space-between" alignItems="center">
+        <Typography variant="h4" sx={{ fontWeight: 600 }}>
+          AI Environmental Intelligence
+        </Typography>
+
+        <Box textAlign="right">
+          <Typography variant="body2" sx={{ color: "green" }}>
+            ● Live
+          </Typography>
+          <Typography variant="caption">
+            Updated: {lastUpdated || "--"}
+          </Typography>
+        </Box>
+      </Box>
 
       {/* TIME FILTER */}
       <Stack direction="row" spacing={2} sx={{ marginBottom: 4 }}>
