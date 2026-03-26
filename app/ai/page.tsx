@@ -26,30 +26,58 @@ import {
 
 import { useState, useEffect } from "react";
 
-/* ---------- Forecast Generator (Client Only) ---------- */
-const generateForecast = (points: number) =>
-  Array.from({ length: points }, (_, i) => ({
-    hour: `+${i + 1}h`,
-    aqi: 95 + Math.random() * 40,
-    temp: 33 + Math.random() * 5,
-  }));
-
 export default function AIPredictionPage() {
   const [timeRange, setTimeRange] = useState("6H");
   const [forecastData, setForecastData] = useState<any[]>([]);
+  const [currentAQI, setCurrentAQI] = useState(0);
+  const [currentTemp, setCurrentTemp] = useState(0);
+  const [aqiConfidence, setAqiConfidence] = useState(0);
+  const [tempConfidence, setTempConfidence] = useState(0);
 
-  /* ---------- Generate Forecast ONLY on Client ---------- */
+  // 🔥 FETCH DATA FROM API
+  const fetchData = async () => {
+    try {
+      let hours = 6;
+      if (timeRange === "3H") hours = 3;
+      else if (timeRange === "12H") hours = 12;
+
+      const res = await fetch(
+        `https://climapulse-backend.onrender.com/predict?hours=${hours}`
+      );
+      const data = await res.json();
+
+      setCurrentAQI(data.current.aqi);
+      setCurrentTemp(data.current.temperature);
+      setAqiConfidence(data.summary.aqi_confidence);
+      setTempConfidence(data.summary.temp_confidence);
+
+      const formatted = data.forecast.map((item: any) => ({
+        hour: item.hour,
+        aqi: item.aqi,
+        temp: item.temperature,
+      }));
+
+      setForecastData(formatted);
+    } catch (err) {
+      console.error("API Error:", err);
+    }
+  };
+
+  // 🔥 INITIAL + TIME CHANGE
   useEffect(() => {
-    if (timeRange === "3H") setForecastData(generateForecast(3));
-    else if (timeRange === "12H") setForecastData(generateForecast(12));
-    else setForecastData(generateForecast(6));
+    fetchData();
   }, [timeRange]);
 
-  /* ---------- Current Values (Replace with Live Data Later) ---------- */
-  const currentAQI: number = 102;
-  const currentTemp: number = 34;
+  // 🔥 AUTO REFRESH EVERY 15s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchData();
+    }, 15000);
 
-  /* ---------- Safe Predicted Values ---------- */
+    return () => clearInterval(interval);
+  }, [timeRange]);
+
+  /* ---------- SAFE VALUES ---------- */
   const predictedAQI =
     forecastData.length > 0
       ? forecastData[forecastData.length - 1].aqi
@@ -67,16 +95,8 @@ export default function AIPredictionPage() {
 
   const tempChange = predictedTemp - currentTemp;
 
-  const aqiConfidence = 84;
-  const tempConfidence = 78;
-
   const aqiIncreasing = aqiChange > 0;
   const tempIncreasing = tempChange > 0;
-
-  const insightText =
-    aqiIncreasing
-      ? "Projected increase in particulate concentration indicates moderate AQI escalation within the selected time window."
-      : "AQI levels are expected to remain stable under current environmental conditions.";
 
   return (
     <>
@@ -84,7 +104,7 @@ export default function AIPredictionPage() {
         AI Environmental Intelligence
       </Typography>
 
-      {/* -------- TIME FILTER -------- */}
+      {/* TIME FILTER */}
       <Stack direction="row" spacing={2} sx={{ marginBottom: 4 }}>
         <ToggleButtonGroup
           value={timeRange}
@@ -97,17 +117,11 @@ export default function AIPredictionPage() {
         </ToggleButtonGroup>
       </Stack>
 
-      {/* -------- SUMMARY ROW -------- */}
+      {/* SUMMARY */}
       <Grid container spacing={3} sx={{ marginBottom: 4 }}>
-        {/* AQI Summary */}
+        {/* AQI */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper
-            sx={{
-              padding: 3,
-              borderRadius: 3,
-              borderTop: "4px solid #ff6f61",
-            }}
-          >
+          <Paper sx={{ padding: 3, borderRadius: 3, borderTop: "4px solid #ff6f61" }}>
             <Typography variant="body2">
               AQI Projection ({timeRange})
             </Typography>
@@ -140,15 +154,9 @@ export default function AIPredictionPage() {
           </Paper>
         </Grid>
 
-        {/* Temperature Summary */}
+        {/* TEMP */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper
-            sx={{
-              padding: 3,
-              borderRadius: 3,
-              borderTop: "4px solid #e53935",
-            }}
-          >
+          <Paper sx={{ padding: 3, borderRadius: 3, borderTop: "4px solid #e53935" }}>
             <Typography variant="body2">
               Temperature Projection ({timeRange})
             </Typography>
@@ -166,7 +174,7 @@ export default function AIPredictionPage() {
             </Box>
 
             <Typography variant="body2">
-              Change: +{tempChange.toFixed(1)}°C
+              Change: {tempChange.toFixed(1)}°C
             </Typography>
 
             <Typography variant="body2" sx={{ marginTop: 1 }}>
@@ -183,7 +191,7 @@ export default function AIPredictionPage() {
         </Grid>
       </Grid>
 
-      {/* -------- AQI GRAPH -------- */}
+      {/* AQI GRAPH */}
       <Paper sx={{ padding: 3, borderRadius: 3, marginBottom: 4 }}>
         <Typography variant="h6" sx={{ fontWeight: 600 }}>
           AQI Forecast
@@ -195,13 +203,7 @@ export default function AIPredictionPage() {
             <XAxis dataKey="hour" />
             <YAxis domain={[0, 500]} />
             <Tooltip />
-            <Line
-              type="monotone"
-              dataKey="aqi"
-              stroke="#ff6f61"
-              strokeWidth={3}
-              dot={false}
-            />
+            <Line type="monotone" dataKey="aqi" stroke="#ff6f61" strokeWidth={3} dot={false} />
           </LineChart>
         </ResponsiveContainer>
 
@@ -209,13 +211,23 @@ export default function AIPredictionPage() {
           <Typography variant="body2">Severity Level</Typography>
           <LinearProgress
             variant="determinate"
-            value={(predictedAQI / 500) * 100}
+            value={
+              predictedAQI <= 50
+                ? 20
+                : predictedAQI <= 100
+                ? 40
+                : predictedAQI <= 200
+                ? 60
+                : predictedAQI <= 300
+                ? 80
+                : 100
+            }
             sx={{ height: 8, borderRadius: 5, marginTop: 1 }}
           />
         </Box>
       </Paper>
 
-      {/* -------- TEMPERATURE GRAPH -------- */}
+      {/* TEMP GRAPH */}
       <Paper sx={{ padding: 3, borderRadius: 3 }}>
         <Typography variant="h6" sx={{ fontWeight: 600 }}>
           Heatwave Risk Projection
@@ -227,13 +239,7 @@ export default function AIPredictionPage() {
             <XAxis dataKey="hour" />
             <YAxis domain={[0, 60]} />
             <Tooltip />
-            <Line
-              type="monotone"
-              dataKey="temp"
-              stroke="#e53935"
-              strokeWidth={3}
-              dot={false}
-            />
+            <Line type="monotone" dataKey="temp" stroke="#e53935" strokeWidth={3} dot={false} />
           </LineChart>
         </ResponsiveContainer>
 
@@ -241,34 +247,21 @@ export default function AIPredictionPage() {
           <Typography variant="body2">Heat Intensity Index</Typography>
           <LinearProgress
             variant="determinate"
-            value={(predictedTemp / 60) * 100}
+            value={
+              predictedTemp <= 25
+                ? 20
+                : predictedTemp <= 30
+                ? 40
+                : predictedTemp <= 35
+                ? 60
+                : predictedTemp <= 40
+                ? 80
+                : 100
+            }
             sx={{ height: 8, borderRadius: 5, marginTop: 1 }}
             color="error"
           />
         </Box>
-      </Paper>
-
-      {/* -------- EXPLAINABLE INSIGHT -------- */}
-      <Paper
-        sx={{
-          padding: 3,
-          borderRadius: 3,
-          marginTop: 4,
-          borderLeft: "4px solid #3949ab",
-        }}
-      >
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          Predictive Insight
-        </Typography>
-
-        <Typography variant="body2" sx={{ marginTop: 2 }}>
-          {insightText}
-        </Typography>
-
-        <Typography variant="body2" sx={{ marginTop: 1 }}>
-          Temperature trend indicates potential heat stress conditions
-          if upward trajectory continues within selected forecast window.
-        </Typography>
       </Paper>
     </>
   );
