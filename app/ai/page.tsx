@@ -9,10 +9,8 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Stack,
+  CircularProgress,
 } from "@mui/material";
-
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 
 import {
   LineChart,
@@ -35,19 +33,22 @@ export default function AIPredictionPage() {
   const [tempConfidence, setTempConfidence] = useState(0);
   const [lastUpdated, setLastUpdated] = useState("");
   const [isActive, setIsActive] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const loadingRef = useRef(false);
   const lastFetchRef = useRef(0);
   const controllerRef = useRef<AbortController | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = async (force = false) => {
     const now = Date.now();
 
-    if (now - lastFetchRef.current < 10000) return;
+    if (!force && now - lastFetchRef.current < 10000) return;
     lastFetchRef.current = now;
 
     if (loadingRef.current) return;
     loadingRef.current = true;
+
+    setLoading(true);
 
     if (controllerRef.current) {
       controllerRef.current.abort();
@@ -98,20 +99,26 @@ export default function AIPredictionPage() {
       }
     } finally {
       loadingRef.current = false;
+      setLoading(false);
     }
   };
 
+  // 🔥 FIX: instant fetch on toggle
   useEffect(() => {
-    fetchData();
+    lastFetchRef.current = 0;
+    fetchData(true);
+  }, [timeRange]);
 
+  // 🔥 Reduced polling (quota safe)
+  useEffect(() => {
     const interval = setInterval(() => {
       if (!document.hidden) {
         fetchData();
       }
-    }, 60000);
+    }, 120000); // 2 min
 
     return () => clearInterval(interval);
-  }, [timeRange]);
+  }, []);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -121,7 +128,6 @@ export default function AIPredictionPage() {
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
-
     return () =>
       document.removeEventListener("visibilitychange", handleVisibility);
   }, []);
@@ -145,9 +151,6 @@ export default function AIPredictionPage() {
     currentTemp && predictedTemp !== "--"
       ? predictedTemp - currentTemp
       : 0;
-
-  const aqiIncreasing = aqiChange > 0;
-  const tempIncreasing = tempChange > 0;
 
   return (
     <>
@@ -178,6 +181,9 @@ export default function AIPredictionPage() {
           <ToggleButton value="6H">6 Hours</ToggleButton>
           <ToggleButton value="12H">12 Hours</ToggleButton>
         </ToggleButtonGroup>
+
+        {/* 🔥 Loading Indicator */}
+        {loading && <CircularProgress size={24} />}
       </Stack>
 
       {/* SUMMARY */}
@@ -208,7 +214,8 @@ export default function AIPredictionPage() {
               Temperature Projection ({timeRange})
             </Typography>
 
-            <Typography variant="h5">
+            {/* 🔥 BOLD TEMP */}
+            <Typography variant="h5" sx={{ fontWeight: 700 }}>
               {predictedTemp !== "--"
                 ? `${Number(predictedTemp).toFixed(1)}°C`
                 : "--"}
@@ -234,7 +241,7 @@ export default function AIPredictionPage() {
         </Typography>
 
         <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={forecastData}>
+          <LineChart data={forecastData} key={timeRange}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="hour" />
             <YAxis domain={[0, 500]} />
@@ -242,27 +249,6 @@ export default function AIPredictionPage() {
             <Line type="monotone" dataKey="aqi" stroke="#ff6f61" strokeWidth={3} dot={false} />
           </LineChart>
         </ResponsiveContainer>
-
-        <Box sx={{ marginTop: 2 }}>
-          <Typography variant="body2">Severity Level</Typography>
-          <LinearProgress
-            variant="determinate"
-            value={
-              predictedAQI !== "--"
-                ? predictedAQI <= 50
-                  ? 20
-                  : predictedAQI <= 100
-                  ? 40
-                  : predictedAQI <= 200
-                  ? 60
-                  : predictedAQI <= 300
-                  ? 80
-                  : 100
-                : 0
-            }
-            sx={{ height: 8, borderRadius: 5, marginTop: 1 }}
-          />
-        </Box>
       </Paper>
 
       {/* TEMP GRAPH */}
@@ -272,7 +258,7 @@ export default function AIPredictionPage() {
         </Typography>
 
         <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={forecastData}>
+          <LineChart data={forecastData} key={timeRange + "temp"}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="hour" />
             <YAxis domain={[0, 60]} />
@@ -280,28 +266,6 @@ export default function AIPredictionPage() {
             <Line type="monotone" dataKey="temp" stroke="#e53935" strokeWidth={3} dot={false} />
           </LineChart>
         </ResponsiveContainer>
-
-        <Box sx={{ marginTop: 2 }}>
-          <Typography variant="body2">Heat Intensity Index</Typography>
-          <LinearProgress
-            variant="determinate"
-            value={
-              predictedTemp !== "--"
-                ? predictedTemp <= 25
-                  ? 20
-                  : predictedTemp <= 30
-                  ? 40
-                  : predictedTemp <= 35
-                  ? 60
-                  : predictedTemp <= 40
-                  ? 80
-                  : 100
-                : 0
-            }
-            sx={{ height: 8, borderRadius: 5, marginTop: 1 }}
-            color="error"
-          />
-        </Box>
       </Paper>
     </>
   );
