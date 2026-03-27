@@ -24,99 +24,142 @@ import {
   CartesianGrid,
 } from "recharts";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function AIPredictionPage() {
   const [timeRange, setTimeRange] = useState("6H");
   const [forecastData, setForecastData] = useState<any[]>([]);
-  const [currentAQI, setCurrentAQI] = useState(0);
-  const [currentTemp, setCurrentTemp] = useState(0);
+  const [currentAQI, setCurrentAQI] = useState<number | null>(null);
+  const [currentTemp, setCurrentTemp] = useState<number | null>(null);
   const [aqiConfidence, setAqiConfidence] = useState(0);
   const [tempConfidence, setTempConfidence] = useState(0);
   const [lastUpdated, setLastUpdated] = useState("");
+  const [isActive, setIsActive] = useState(false);
 
-  // 🔥 FETCH DATA FROM API
+  const loadingRef = useRef(false);
+  const lastFetchRef = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
+
   const fetchData = async () => {
+    const now = Date.now();
+
+    if (now - lastFetchRef.current < 10000) return;
+    lastFetchRef.current = now;
+
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+    }
+
+    controllerRef.current = new AbortController();
+
     try {
       let hours = 6;
       if (timeRange === "3H") hours = 3;
       else if (timeRange === "12H") hours = 12;
 
       const res = await fetch(
-        `https://climapulse-backend.onrender.com/predict?hours=${hours}`
+        `https://climapulse-backend.onrender.com/predict?hours=${hours}`,
+        { signal: controllerRef.current.signal }
       );
+
       const data = await res.json();
 
-      if (data.error) return; // avoid breaking UI
+      if (data.error) {
+        setIsActive(false);
+        return;
+      }
 
-      setCurrentAQI(data.current.aqi);
-      setCurrentTemp(data.current.temperature);
-      setAqiConfidence(data.summary.aqi_confidence);
-      setTempConfidence(data.summary.temp_confidence);
+      if (data?.current?.aqi != null && data?.current?.temperature != null) {
+        setCurrentAQI(data.current.aqi);
+        setCurrentTemp(data.current.temperature);
+        setAqiConfidence(data.summary.aqi_confidence);
+        setTempConfidence(data.summary.temp_confidence);
 
-      const formatted = data.forecast.map((item: any) => ({
-        hour: item.hour,
-        aqi: item.aqi,
-        temp: item.temperature,
-      }));
+        const formatted = data.forecast.map((item: any) => ({
+          hour: item.hour,
+          aqi: item.aqi,
+          temp: item.temperature,
+        }));
 
-      setForecastData(formatted);
+        setForecastData(formatted);
 
-      // ✅ update timestamp
-      setLastUpdated(new Date().toLocaleTimeString());
-    } catch (err) {
-      console.error("API Error:", err);
+        setLastUpdated(new Date().toLocaleTimeString());
+        setIsActive(true);
+      } else {
+        setIsActive(false);
+      }
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        console.error("API Error:", err);
+        setIsActive(false);
+      }
+    } finally {
+      loadingRef.current = false;
     }
   };
 
-  // 🔥 INITIAL + TIME CHANGE
   useEffect(() => {
     fetchData();
-  }, [timeRange]);
 
-  // 🔥 AUTO REFRESH (60 sec + tab active check)
-  useEffect(() => {
     const interval = setInterval(() => {
       if (!document.hidden) {
         fetchData();
       }
-    }, 60000); // ✅ 60 seconds
+    }, 60000);
 
     return () => clearInterval(interval);
   }, [timeRange]);
 
-  /* ---------- SAFE VALUES ---------- */
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        fetchData();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
   const predictedAQI =
     forecastData.length > 0
       ? forecastData[forecastData.length - 1].aqi
-      : 0;
+      : currentAQI ?? "--";
 
   const predictedTemp =
     forecastData.length > 0
       ? forecastData[forecastData.length - 1].temp
-      : 0;
+      : currentTemp ?? "--";
 
   const aqiChange =
-    currentAQI !== 0
+    currentAQI && predictedAQI !== "--"
       ? ((predictedAQI - currentAQI) / currentAQI) * 100
       : 0;
 
-  const tempChange = predictedTemp - currentTemp;
+  const tempChange =
+    currentTemp && predictedTemp !== "--"
+      ? predictedTemp - currentTemp
+      : 0;
 
   const aqiIncreasing = aqiChange > 0;
   const tempIncreasing = tempChange > 0;
 
   return (
     <>
-      {/* 🔥 HEADER WITH LIVE STATUS */}
+      {/* HEADER */}
       <Box display="flex" justifyContent="space-between" alignItems="center">
         <Typography variant="h4" sx={{ fontWeight: 600 }}>
           AI Environmental Intelligence
         </Typography>
 
         <Box textAlign="right">
-          <Typography variant="body2" sx={{ color: "green" }}>
-            ● Live
+          <Typography variant="body2" sx={{ color: isActive ? "green" : "red" }}>
+            ● {isActive ? "Live" : "Inactive"}
           </Typography>
           <Typography variant="caption">
             Updated: {lastUpdated || "--"}
@@ -139,74 +182,47 @@ export default function AIPredictionPage() {
 
       {/* SUMMARY */}
       <Grid container spacing={3} sx={{ marginBottom: 4 }}>
-        {/* AQI */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ padding: 3, borderRadius: 3, borderTop: "4px solid #ff6f61" }}>
-            <Typography variant="body2">
-              AQI Projection ({timeRange})
+            <Typography variant="body2">AQI Projection ({timeRange})</Typography>
+
+            <Typography variant="h5" sx={{ fontWeight: 700 }}>
+              {predictedAQI !== "--" ? Math.round(Number(predictedAQI)) : "--"}
             </Typography>
-
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                {Math.round(predictedAQI)}
-              </Typography>
-
-              {aqiIncreasing ? (
-                <ArrowUpwardIcon sx={{ color: "#e53935" }} />
-              ) : (
-                <ArrowDownwardIcon sx={{ color: "#43a047" }} />
-              )}
-            </Box>
 
             <Typography variant="body2">
               Change: {aqiChange.toFixed(1)}%
             </Typography>
 
-            <Typography variant="body2" sx={{ marginTop: 1 }}>
+            <Typography variant="body2">
               Confidence: {aqiConfidence}%
             </Typography>
 
-            <LinearProgress
-              variant="determinate"
-              value={aqiConfidence}
-              sx={{ height: 6, borderRadius: 5, marginTop: 1 }}
-            />
+            <LinearProgress value={aqiConfidence} variant="determinate" />
           </Paper>
         </Grid>
 
-        {/* TEMP */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ padding: 3, borderRadius: 3, borderTop: "4px solid #e53935" }}>
+          <Paper sx={{ padding: 3, borderRadius: 3 }}>
             <Typography variant="body2">
               Temperature Projection ({timeRange})
             </Typography>
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                {predictedTemp.toFixed(1)}°C
-              </Typography>
-
-              {tempIncreasing ? (
-                <ArrowUpwardIcon sx={{ color: "#e53935" }} />
-              ) : (
-                <ArrowDownwardIcon sx={{ color: "#43a047" }} />
-              )}
-            </Box>
+            <Typography variant="h5">
+              {predictedTemp !== "--"
+                ? `${Number(predictedTemp).toFixed(1)}°C`
+                : "--"}
+            </Typography>
 
             <Typography variant="body2">
               Change: {tempChange.toFixed(1)}°C
             </Typography>
 
-            <Typography variant="body2" sx={{ marginTop: 1 }}>
+            <Typography variant="body2">
               Confidence: {tempConfidence}%
             </Typography>
 
-            <LinearProgress
-              variant="determinate"
-              value={tempConfidence}
-              sx={{ height: 6, borderRadius: 5, marginTop: 1 }}
-              color="error"
-            />
+            <LinearProgress value={tempConfidence} variant="determinate" />
           </Paper>
         </Grid>
       </Grid>
@@ -232,15 +248,17 @@ export default function AIPredictionPage() {
           <LinearProgress
             variant="determinate"
             value={
-              predictedAQI <= 50
-                ? 20
-                : predictedAQI <= 100
-                ? 40
-                : predictedAQI <= 200
-                ? 60
-                : predictedAQI <= 300
-                ? 80
-                : 100
+              predictedAQI !== "--"
+                ? predictedAQI <= 50
+                  ? 20
+                  : predictedAQI <= 100
+                  ? 40
+                  : predictedAQI <= 200
+                  ? 60
+                  : predictedAQI <= 300
+                  ? 80
+                  : 100
+                : 0
             }
             sx={{ height: 8, borderRadius: 5, marginTop: 1 }}
           />
@@ -268,15 +286,17 @@ export default function AIPredictionPage() {
           <LinearProgress
             variant="determinate"
             value={
-              predictedTemp <= 25
-                ? 20
-                : predictedTemp <= 30
-                ? 40
-                : predictedTemp <= 35
-                ? 60
-                : predictedTemp <= 40
-                ? 80
-                : 100
+              predictedTemp !== "--"
+                ? predictedTemp <= 25
+                  ? 20
+                  : predictedTemp <= 30
+                  ? 40
+                  : predictedTemp <= 35
+                  ? 60
+                  : predictedTemp <= 40
+                  ? 80
+                  : 100
+                : 0
             }
             sx={{ height: 8, borderRadius: 5, marginTop: 1 }}
             color="error"
