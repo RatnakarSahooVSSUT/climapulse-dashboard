@@ -250,6 +250,26 @@ export default function AIPredictionPage() {
           </LineChart>
         </ResponsiveContainer>
       </Paper>
+      <Box sx={{ marginTop: 2 }}>
+        <Typography variant="body2">Severity Level</Typography>
+        <LinearProgress
+          variant="determinate"
+          value={
+            predictedAQI !== "--"
+              ? predictedAQI <= 50
+                ? 20
+                : predictedAQI <= 100
+                ? 40
+                : predictedAQI <= 200
+                ? 60
+                : predictedAQI <= 300
+                ? 80
+                : 100
+              : 0
+          }
+          sx={{ height: 8, borderRadius: 5, marginTop: 1 }}
+        />
+      </Box>
 
       {/* TEMP GRAPH */}
       <Paper sx={{ padding: 3, borderRadius: 3 }}>
@@ -267,6 +287,27 @@ export default function AIPredictionPage() {
           </LineChart>
         </ResponsiveContainer>
       </Paper>
+      <Box sx={{ marginTop: 2 }}>
+        <Typography variant="body2">Heat Intensity Index</Typography>
+        <LinearProgress
+          variant="determinate"
+          value={
+            predictedTemp !== "--"
+              ? predictedTemp <= 25
+                ? 20
+                : predictedTemp <= 30
+                ? 40
+                : predictedTemp <= 35
+                ? 60
+                : predictedTemp <= 40
+                ? 80
+                : 100
+              : 0
+          }
+          sx={{ height: 8, borderRadius: 5, marginTop: 1 }}
+          color="error"
+        />
+      </Box>
     </>
   );
 }
