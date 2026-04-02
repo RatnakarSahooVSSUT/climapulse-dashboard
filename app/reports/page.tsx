@@ -50,10 +50,10 @@ const paramColors: Record<string, string> = {
   CO2: "#3498db",
   CO: "#16a085",
   CH4: "#e74c3c",
-  NO2: "#2c3e50",
+  NO2: "#a855f7",
   Temperature: "#e67e22",
   Humidity: "#27ae60",
-  Pressure: "#34495e",
+  Pressure: "#00d4ff",
 };
 
 /* ---------------- Units ---------------- */
@@ -254,27 +254,53 @@ export default function ReportsPage() {
 
   return (
     <>
-      <Typography variant="h4" sx={{ fontWeight: 600 }} gutterBottom>
+      {/* HEADER */}
+      <Typography
+        variant="h4"
+        sx={{
+          fontWeight: 700,
+          mb: 3,
+          textShadow: "0 0 8px rgba(99,102,241,0.4)",
+        }}
+      >
         ClimaPulse Environmental Report System
       </Typography>
 
-      {/* Time Range - Styled */}
-      <Paper sx={{ padding: 3, borderRadius: 2, marginBottom: 3 }}>
+      {/* TIME RANGE */}
+      <Paper
+        sx={{
+          p: 3,
+          borderRadius: 4,
+          mb: 3,
+          backdropFilter: "blur(10px)",
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(99,102,241,0.4)",
+          boxShadow: "0 0 10px rgba(99,102,241,0.25)",
+        }}
+      >
         <Typography variant="h6">Time Range</Typography>
-        <Stack direction="row" spacing={2} sx={{ marginTop: 2 }}>
+
+        <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
           <ToggleButtonGroup
             value={timeRange}
             exclusive
             onChange={(e, value) => value && setTimeRange(value)}
             sx={{
               "& .MuiToggleButton-root": {
-                borderColor: "#1976d2",
-                color: "#1976d2",
-                fontWeight: 500,
+                borderRadius: 3,
+                px: 3,
+                border: "1px solid #6366f1",
+                color: "#6366f1",
+                background: "transparent",
+                "&:hover": {
+                  boxShadow: "0 0 10px #6366f1",
+                },
               },
               "& .Mui-selected": {
-                backgroundColor: "#1976d2 !important",
-                color: "#fff !important",
+                background: "transparent !important",
+                color: "#00ff9c !important",
+                border: "1px solid #00ff9c",
+                boxShadow: "0 0 12px #00ff9c",
               },
             }}
           >
@@ -286,50 +312,90 @@ export default function ReportsPage() {
         </Stack>
       </Paper>
 
-      {/* Parameter Selection - Colored */}
-      <Paper sx={{ padding: 3, borderRadius: 2, marginBottom: 3 }}>
+      {/* PARAMETERS */}
+      <Paper
+        sx={{
+          p: 3,
+          borderRadius: 4,
+          mb: 3,
+          backdropFilter: "blur(10px)",
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(0,255,156,0.3)",
+          boxShadow: "0 0 10px rgba(0,255,156,0.2)",
+        }}
+      >
         <Typography variant="h6">Select Parameters</Typography>
-        <FormGroup sx={{ marginTop: 2 }}>
+
+        <FormGroup sx={{ mt: 2 }}>
           <Grid container spacing={2}>
             {Object.keys(paramColors).map((param) => (
               <Grid key={param} size={{ xs: 6, md: 3 }}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={selectedParams.includes(param)}
-                      sx={{
-                        color: paramColors[param],
-                        "&.Mui-checked": {
+                <Box
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    border: `1px solid ${paramColors[param]}`,
+                    transition: "0.3s",
+                    "&:hover": {
+                      boxShadow: `0 0 10px ${paramColors[param]}`,
+                    },
+                 }}
+                >
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={selectedParams.includes(param)}
+                        sx={{
                           color: paramColors[param],
-                        },
-                      }}
-                      onChange={() =>
-                        setSelectedParams((prev) =>
-                          prev.includes(param)
-                            ? prev.filter((p) => p !== param)
-                            : [...prev, param]
-                        )
-                      }
-                    />
-                  }
-                  label={
-                    <Typography
-                      sx={{
-                        color: paramColors[param],
-                        fontWeight: 500,
-                      }}
-                    >
-                      {param}
-                    </Typography>
-                  }
-                />
+                          "&.Mui-checked": {
+                            color: paramColors[param],
+                          },
+                        }}
+                        onChange={() =>
+                          setSelectedParams((prev) =>
+                            prev.includes(param)
+                              ? prev.filter((p) => p !== param)
+                              : [...prev, param]
+                          )
+                        }
+                      />
+                    }
+                    label={
+                      <Typography
+                        sx={{
+                          color: paramColors[param],
+                          fontWeight: 600,
+                        }}
+                      >
+                        {param}
+                      </Typography>
+                    }
+                  />
+                </Box>
               </Grid>
             ))}
           </Grid>
         </FormGroup>
       </Paper>
 
-      <Button variant="contained" sx={{ mb: 3 }} onClick={fetchData}>
+      {/* BUTTON */}
+      <Button
+        variant="outlined"
+        onClick={fetchData}
+        sx={{
+          mb: 3,
+          px: 4,
+          py: 1.2,
+          borderRadius: 3,
+          border: "1px solid #6366f1",
+          color: "#6366f1",
+          boxShadow: "0 0 12px rgba(99,102,241,0.5)",
+          transition: "0.3s",
+          "&:hover": {
+            boxShadow: "0 0 18px rgba(99,102,241,0.8)",
+          },
+        }}
+      >
         Generate Report
       </Button>
 
@@ -378,17 +444,15 @@ export default function ReportsPage() {
 
               <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={data}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timeLabel" />
-                  <YAxis />
+                  <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
+                  <XAxis stroke="#9ca3af" dataKey="timeLabel" />
+                  <YAxis stroke="#9ca3af" />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#ffffff",
-                      color: "#000000",
-                      border: "1px solid #ccc",
+                      background: "#020617",
+                      border: "1px solid #00ff9c",
+                      color: "#fff",
                     }}
-                    labelStyle={{ color: "#000000" }}
-                    itemStyle={{ color: "#000000" }}
                   />
                   <Line
                     type="monotone"
@@ -426,6 +490,13 @@ export default function ReportsPage() {
             variant="outlined"
             startIcon={<DownloadIcon />}
             onClick={downloadCSV}
+            sx={{
+              border: "1px solid #00ff9c",
+              color: "#00ff9c",
+              "&:hover": {
+                boxShadow: "0 0 12px #00ff9c",
+              },
+            }}
           >
             Download CSV
           </Button>
@@ -434,6 +505,13 @@ export default function ReportsPage() {
             variant="outlined"
             startIcon={<DownloadIcon />}
             onClick={downloadPDF}
+            sx={{
+              border: "1px solid #6366f1",
+              color: "#6366f1",
+              "&:hover": {
+               boxShadow: "0 0 12px #6366f1",
+              },
+            }}
           >
             Download PDF
           </Button>

@@ -15,9 +15,10 @@
     "@mui/material": "^7.3.8",
     "file-saver": "^2.0.5",
     "firebase": "^12.10.0",
+    "framer-motion": "^12.38.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.0",
-    "next": "16.1.6",
+    "next": "^16.2.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.7.0"

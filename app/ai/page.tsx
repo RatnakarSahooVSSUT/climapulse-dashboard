@@ -10,6 +10,7 @@ import {
   ToggleButtonGroup,
   Stack,
   CircularProgress,
+  useTheme,
 } from "@mui/material";
 
 import {
@@ -25,6 +26,9 @@ import {
 import { useState, useEffect, useRef } from "react";
 
 export default function AIPredictionPage() {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+
   const [timeRange, setTimeRange] = useState("6H");
   const [forecastData, setForecastData] = useState<any[]>([]);
   const [currentAQI, setCurrentAQI] = useState<number | null>(null);
@@ -41,7 +45,6 @@ export default function AIPredictionPage() {
 
   const fetchData = async (force = false) => {
     const now = Date.now();
-
     if (!force && now - lastFetchRef.current < 10000) return;
     lastFetchRef.current = now;
 
@@ -50,10 +53,7 @@ export default function AIPredictionPage() {
 
     setLoading(true);
 
-    if (controllerRef.current) {
-      controllerRef.current.abort();
-    }
-
+    if (controllerRef.current) controllerRef.current.abort();
     controllerRef.current = new AbortController();
 
     try {
@@ -68,69 +68,42 @@ export default function AIPredictionPage() {
 
       const data = await res.json();
 
-      if (data.error) {
-        setIsActive(false);
-        return;
-      }
-
       if (data?.current?.aqi != null && data?.current?.temperature != null) {
         setCurrentAQI(data.current.aqi);
         setCurrentTemp(data.current.temperature);
         setAqiConfidence(data.summary.aqi_confidence);
         setTempConfidence(data.summary.temp_confidence);
 
-        const formatted = data.forecast.map((item: any) => ({
-          hour: item.hour,
+        const formatted = data.forecast.map((item: any, i: number) => ({
+          hour: i === 0 ? "0" : `+${i}`, // FIXED LABEL
           aqi: item.aqi,
           temp: item.temperature,
         }));
 
-        setForecastData(formatted);
+        formatted.push({
+          hour: `+${timeRange === "3H" ? 3 : timeRange === "6H" ? 6 : 12}`,
+          aqi: formatted[formatted.length - 1].aqi,
+          temp: formatted[formatted.length - 1].temp,
+        });
 
+        setForecastData(formatted);
         setLastUpdated(new Date().toLocaleTimeString());
         setIsActive(true);
       } else {
         setIsActive(false);
       }
-    } catch (err: any) {
-      if (err.name !== "AbortError") {
-        console.error("API Error:", err);
-        setIsActive(false);
-      }
+    } catch {
+      setIsActive(false);
     } finally {
       loadingRef.current = false;
       setLoading(false);
     }
   };
 
-  // 🔥 FIX: instant fetch on toggle
   useEffect(() => {
     lastFetchRef.current = 0;
     fetchData(true);
   }, [timeRange]);
-
-  // 🔥 Reduced polling (quota safe)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!document.hidden) {
-        fetchData();
-      }
-    }, 120000); // 2 min
-
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (!document.hidden) {
-        fetchData();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibility);
-  }, []);
 
   const predictedAQI =
     forecastData.length > 0
@@ -155,45 +128,83 @@ export default function AIPredictionPage() {
   return (
     <>
       {/* HEADER */}
-      <Box display="flex" justifyContent="space-between" alignItems="center">
-        <Typography variant="h4" sx={{ fontWeight: 600 }}>
-          AI Environmental Intelligence
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+      <Typography variant="h4" sx={{ fontWeight: 700 }}>
+        AI Environmental Intelligence
+      </Typography>
+
+      <Box textAlign="right">
+        {/* LIVE INDICATOR */}
+        <Typography
+          sx={{
+            color: isActive ? "#00ff9c" : "#ff4d4d",
+            fontWeight: 600,
+            textShadow: isActive
+              ? "0 0 8px #00ff9c"
+              : "0 0 8px #ff4d4d",
+          }}
+        >
+          ● {isActive ? "Live" : "Inactive"}
         </Typography>
 
-        <Box textAlign="right">
-          <Typography variant="body2" sx={{ color: isActive ? "green" : "red" }}>
-            ● {isActive ? "Live" : "Inactive"}
-          </Typography>
-          <Typography variant="caption">
-            Updated: {lastUpdated || "--"}
-          </Typography>
-        </Box>
+        {/* LAST UPDATED */}
+        <Typography variant="caption">
+          Updated: {lastUpdated || "--"}
+        </Typography>
       </Box>
+    </Box>
 
       {/* TIME FILTER */}
-      <Stack direction="row" spacing={2} sx={{ marginBottom: 4 }}>
+      <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
         <ToggleButtonGroup
           value={timeRange}
           exclusive
           onChange={(e, value) => value && setTimeRange(value)}
+          sx={{
+            "& .MuiToggleButton-root": {
+              border: "1px solid #6366f1",
+              color: "#6366f1",
+              background: "transparent",
+              borderRadius: 3,
+              px: 3,
+              "&:hover": {
+                boxShadow: "0 0 10px #6366f1",
+              },
+            },
+            "& .Mui-selected": {
+              color: "#00ff9c !important",
+              border: "1px solid #00ff9c",
+              boxShadow: "0 0 12px #00ff9c",
+            },
+          }}
         >
-          <ToggleButton value="3H">3 Hours</ToggleButton>
-          <ToggleButton value="6H">6 Hours</ToggleButton>
-          <ToggleButton value="12H">12 Hours</ToggleButton>
+          <ToggleButton value="3H">3H</ToggleButton>
+          <ToggleButton value="6H">6H</ToggleButton>
+          <ToggleButton value="12H">12H</ToggleButton>
         </ToggleButtonGroup>
 
-        {/* 🔥 Loading Indicator */}
-        {loading && <CircularProgress size={24} />}
+        {loading && <CircularProgress size={22} />}
       </Stack>
 
-      {/* SUMMARY */}
-      <Grid container spacing={3} sx={{ marginBottom: 4 }}>
+      {/* 🔥 VALUE CARDS (RESTORED + IMPROVED) */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ padding: 3, borderRadius: 3, borderTop: "4px solid #ff6f61" }}>
-            <Typography variant="body2">AQI Projection ({timeRange})</Typography>
-
-            <Typography variant="h5" sx={{ fontWeight: 700 }}>
-              {predictedAQI !== "--" ? Math.round(Number(predictedAQI)) : "--"}
+          <Paper
+            sx={{
+              p: 3,
+              borderRadius: 4,
+              background: isDark
+                ? "linear-gradient(145deg,#0f172a,#1e293b)"
+                : "#ffffff",
+              border: "1px solid #ff6f61",
+              boxShadow: "0 0 12px #ff6f6140",
+            }}
+          >
+            <Typography variant="body2">AQI Projection</Typography>
+            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+              {predictedAQI !== "--"
+                ? Math.round(Number(predictedAQI))
+                : "--"}
             </Typography>
 
             <Typography variant="body2">
@@ -204,18 +215,28 @@ export default function AIPredictionPage() {
               Confidence: {aqiConfidence}%
             </Typography>
 
-            <LinearProgress value={aqiConfidence} variant="determinate" />
+            <LinearProgress
+              value={aqiConfidence}
+              variant="determinate"
+              sx={{ mt: 1 }}
+            />
           </Paper>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ padding: 3, borderRadius: 3 }}>
-            <Typography variant="body2">
-              Temperature Projection ({timeRange})
-            </Typography>
-
-            {/* 🔥 BOLD TEMP */}
-            <Typography variant="h5" sx={{ fontWeight: 700 }}>
+          <Paper
+            sx={{
+              p: 3,
+              borderRadius: 4,
+              background: isDark
+                ? "linear-gradient(145deg,#0f172a,#1e293b)"
+                : "#ffffff",
+              border: "1px solid #e53935",
+              boxShadow: "0 0 12px #e5393540",
+            }}
+          >
+            <Typography variant="body2">Temperature Projection</Typography>
+            <Typography variant="h4" sx={{ fontWeight: 700 }}>
               {predictedTemp !== "--"
                 ? `${Number(predictedTemp).toFixed(1)}°C`
                 : "--"}
@@ -229,34 +250,59 @@ export default function AIPredictionPage() {
               Confidence: {tempConfidence}%
             </Typography>
 
-            <LinearProgress value={tempConfidence} variant="determinate" />
+            <LinearProgress
+              value={tempConfidence}
+              variant="determinate"
+              color="error"
+              sx={{ mt: 1 }}
+            />
           </Paper>
         </Grid>
       </Grid>
 
-      {/* AQI GRAPH */}
-      <Paper sx={{ padding: 3, borderRadius: 3, marginBottom: 4 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          AQI Forecast
-        </Typography>
+      {/* 🔥 AQI CARD */}
+      <Paper
+        sx={{
+          p: 3,
+          mb: 4,
+          borderRadius: 4,
+          border: "1px solid #00f5ff",
+          boxShadow: "0 0 20px #00f5ff40",
+        }}
+      >
+        <Typography variant="h6">AQI Forecast</Typography>
+        <Box sx={{ px: 2 }}>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart
+              data={forecastData}
+              margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+            >
+              <CartesianGrid stroke={isDark ? "#1f2937" : "#e5e7eb"} />
+              <XAxis
+                stroke={isDark ? "#aaa" : "#555"}
+                dataKey="hour"
+                interval={0}
+              />
+              <YAxis stroke={isDark ? "#aaa" : "#555"} />
+              <Tooltip />
+              <Line
+                type="monotone"
+                dataKey="aqi"
+                stroke="#ff6f61"
+                strokeWidth={3}
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </Box>
 
-        <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={forecastData} key={timeRange}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="hour" />
-            <YAxis domain={[0, 500]} />
-            <Tooltip />
-            <Line type="monotone" dataKey="aqi" stroke="#ff6f61" strokeWidth={3} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Paper>
-      <Box sx={{ marginTop: 2 }}>
-        <Typography variant="body2">Severity Level</Typography>
-        <LinearProgress
-          variant="determinate"
-          value={
-            predictedAQI !== "--"
-              ? predictedAQI <= 50
+        {/* Severity */}
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="body2">Severity Level</Typography>
+          <LinearProgress
+            variant="determinate"
+            value={
+              predictedAQI <= 50
                 ? 20
                 : predictedAQI <= 100
                 ? 40
@@ -265,35 +311,50 @@ export default function AIPredictionPage() {
                 : predictedAQI <= 300
                 ? 80
                 : 100
-              : 0
-          }
-          sx={{ height: 8, borderRadius: 5, marginTop: 1 }}
-        />
-      </Box>
-
-      {/* TEMP GRAPH */}
-      <Paper sx={{ padding: 3, borderRadius: 3 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          Heatwave Risk Projection
-        </Typography>
-
-        <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={forecastData} key={timeRange + "temp"}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="hour" />
-            <YAxis domain={[0, 60]} />
-            <Tooltip />
-            <Line type="monotone" dataKey="temp" stroke="#e53935" strokeWidth={3} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
+            }
+            sx={{ mt: 1, height: 8, borderRadius: 5 }}
+          />
+        </Box>
       </Paper>
-      <Box sx={{ marginTop: 2 }}>
-        <Typography variant="body2">Heat Intensity Index</Typography>
-        <LinearProgress
-          variant="determinate"
-          value={
-            predictedTemp !== "--"
-              ? predictedTemp <= 25
+
+      {/* 🔥 TEMP CARD */}
+      <Paper
+        sx={{
+          p: 3,
+          borderRadius: 4,
+          border: "1px solid #ff4d6d",
+          boxShadow: "0 0 20px #ff4d6d40",
+        }}
+      >
+        <Typography variant="h6">Heatwave Risk Projection</Typography>
+        <Box sx={{ px: 2 }}>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart
+              data={forecastData}
+              margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+            >
+              <CartesianGrid stroke={isDark ? "#1f2937" : "#e5e7eb"} />
+              <XAxis stroke={isDark ? "#aaa" : "#555"} dataKey="hour" />
+              <YAxis stroke={isDark ? "#aaa" : "#555"} />
+              <Tooltip />
+              <Line
+                type="monotone"
+                dataKey="temp"
+                stroke="#e53935"
+                strokeWidth={3}
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </Box>
+
+        {/* Intensity */}
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="body2">Heat Intensity Index</Typography>
+          <LinearProgress
+            variant="determinate"
+            value={
+              predictedTemp <= 25
                 ? 20
                 : predictedTemp <= 30
                 ? 40
@@ -302,12 +363,12 @@ export default function AIPredictionPage() {
                 : predictedTemp <= 40
                 ? 80
                 : 100
-              : 0
-          }
-          sx={{ height: 8, borderRadius: 5, marginTop: 1 }}
-          color="error"
-        />
-      </Box>
+            }
+            sx={{ mt: 1, height: 8, borderRadius: 5 }}
+            color="error"
+          />
+        </Box>
+      </Paper>
     </>
   );
 }

@@ -33,6 +33,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useTheme } from "@mui/material/styles";
 
 /* -------- Colors -------- */
 const colors: any = {
@@ -49,6 +50,8 @@ const colors: any = {
 };
 
 export default function TrendsPage() {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
   const [timeRange, setTimeRange] = useState("1H");
   const [aqiRange, setAqiRange] = useState("1H");
   const [overlayMode, setOverlayMode] = useState(false);
@@ -118,14 +121,29 @@ export default function TrendsPage() {
     return () => unsubscribe();
   }, [timeRange, aqiRange]);
 
-  /* -------- Y AXIS START FROM 0 -------- */
   const getDynamicDomain = (param: string) => {
-    const values = data.map((d) => d[param]).filter((v) => v !== undefined);
-    if (!values.length) return [0, 10];
-    const max = Math.max(...values);
-    const padding = max * 0.1 || 1;
-    return [0, max + padding];
-  };
+  const values = data.map((d) => d[param]).filter((v) => v !== undefined);
+
+  if (!values.length) return [0, 10];
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  // 🔥 Step 1: Add padding
+  const range = max - min || 1;
+  const padding = range * 0.15;
+
+  let newMin = min - padding;
+  let newMax = max + padding;
+
+  // 🔥 Step 2: Round to clean numbers
+  const roundFactor = Math.pow(10, Math.floor(Math.log10(newMax)));
+
+  newMax = Math.ceil(newMax / roundFactor) * roundFactor;
+  newMin = Math.floor(newMin / roundFactor) * roundFactor;
+
+  return [newMin, newMax];
+};
 
   const getDynamicAQIDomain = () => {
     const values = aqiData.map((d) => d.aqi);
@@ -136,27 +154,44 @@ export default function TrendsPage() {
   };
 
   const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <Paper sx={{ padding: 1.5 }}>
-          <Typography variant="caption" sx={{ fontWeight: 600 }}>
-            {data.fullTime}
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <Paper
+        sx={{
+          p: 1.5,
+          borderRadius: 2,
+          backdropFilter: "blur(8px)",
+
+          background: isDark
+            ? "rgba(15,23,42,0.85)"
+            : "#ffffff",
+
+          color: isDark ? "#e2e8f0" : "#111827",
+
+          border: isDark
+            ? "1px solid #334155"
+            : "1px solid #e5e7eb",
+
+          boxShadow: isDark
+            ? "0 0 10px rgba(0,0,0,0.6)"
+            : "0 4px 12px rgba(0,0,0,0.08)",
+        }}
+      >
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+          {data.fullTime}
+        </Typography>
+
+        {payload.map((entry: any, index: number) => (
+          <Typography key={index} sx={{ color: entry.color }}>
+            {entry.name.toUpperCase()} : {entry.value}
           </Typography>
-          {payload.map((entry: any, index: number) => (
-            <Typography
-              key={index}
-              variant="body2"
-              sx={{ color: entry.color }}
-            >
-              {entry.name.toUpperCase()} : {entry.value}
-            </Typography>
-          ))}
-        </Paper>
-      );
-    }
-    return null;
-  };
+        ))}
+      </Paper>
+    );
+  }
+  return null;
+};
 
   const handleParamSelect = (event: any, newParams: any) => {
     if (!overlayMode) {
@@ -174,17 +209,36 @@ export default function TrendsPage() {
 
   return (
     <>
-      <Box display="flex" alignItems="center" gap={2}>
-        <Typography variant="h4" sx={{ fontWeight: 600 }}>
-          AQI Trend Analysis
-        </Typography>
-      </Box>
+      <Typography variant="h4" sx={{ fontWeight: 600 }}>
+        AQI Trend Analysis
+      </Typography>
 
-      <Stack direction="row" spacing={3} sx={{ marginBottom: 3, marginTop: 2 }}>
+      {/* AQI RANGE */}
+      <Stack direction="row" spacing={3} sx={{ mb: 3, mt: 2 }}>
         <ToggleButtonGroup
           value={aqiRange}
           exclusive
           onChange={(e, value) => value && setAqiRange(value)}
+          sx={{
+            backdropFilter: "blur(12px)",
+            background: (theme) =>
+              theme.palette.mode === "dark"
+                ? "rgba(15,23,42,0.6)"
+                : "rgba(255,255,255,0.95)",
+            borderRadius: 3,
+            p: "4px",
+            border: "1px solid #6366f1",
+            boxShadow: "0 0 15px rgba(99,102,241,0.3)",
+            "& .MuiToggleButton-root": {
+              border: "none",
+              color: "#6366f1",
+              px: 3,
+            },
+            "& .Mui-selected": {
+              color: "#00ff9c !important",
+              boxShadow: "0 0 12px #00ff9c",
+            },
+          }}
         >
           <ToggleButton value="30M">30 Min</ToggleButton>
           <ToggleButton value="1H">1 Hour</ToggleButton>
@@ -193,47 +247,91 @@ export default function TrendsPage() {
         </ToggleButtonGroup>
       </Stack>
 
+      {/* AQI GRAPH */}
       <Fade in timeout={400} key={fadeKey}>
-        <Paper sx={{ padding: 3, borderRadius: 3, marginBottom: 5 }}>
-          <Box sx={{ width: "100%", display: "flex", justifyContent: "center" }}>
-            <ResponsiveContainer width="98%" height={350}>
-              <LineChart
-                data={aqiData}
-                margin={{ top: 20, right: 60, left: 80, bottom: 20 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="time" />
-                <YAxis
-                  domain={getDynamicAQIDomain()}
-                  tickFormatter={(v) => Number(v).toFixed(3)}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="aqi"
-                  stroke={colors.aqi}
-                  strokeWidth={4}
-                  dot={false}
-                />
-                <Brush dataKey="time" height={30} />
-              </LineChart>
-            </ResponsiveContainer>
-          </Box>
+        <Paper
+          sx={{
+            p: 3,
+            borderRadius: 4,
+            mb: 5,
+            backdropFilter: "blur(18px)",
+            background: (theme) =>
+              theme.palette.mode === "dark"
+                ? "rgba(15,23,42,0.6)"
+                : "rgba(255,255,255,0.95)",
+            border: "1px solid #1976d2",
+            boxShadow: "0 0 25px rgba(25,118,210,0.4)",
+          }}
+        >
+          <ResponsiveContainer width="98%" height={350}>
+            <LineChart data={aqiData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="time" />
+              <YAxis domain={getDynamicAQIDomain()} />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend />
+              <Line
+                dataKey="aqi"
+                stroke={colors.aqi}
+                strokeWidth={3}
+                dot={false}
+              />
+              <Brush dataKey="time" height={30} />
+            </LineChart>
+          </ResponsiveContainer>
         </Paper>
       </Fade>
 
-      <Divider sx={{ marginBottom: 5 }} />
+      <Divider sx={{ mb: 5 }} />
 
-      <Typography variant="h4" sx={{ fontWeight: 600 }} gutterBottom>
+      <Typography variant="h4" sx={{ fontWeight: 600 }}>
         Parameter Trends
       </Typography>
 
-      <Stack direction="row" spacing={3} sx={{ marginBottom: 3 }}>
+      {/* PARAM CONTROLS */}
+      <Stack direction="row" spacing={3} sx={{ mb: 3 }}>
         <ToggleButtonGroup
           value={timeRange}
           exclusive
           onChange={(e, value) => value && setTimeRange(value)}
+          sx={{
+            backdropFilter: "blur(12px)",
+            background: (theme) =>
+              theme.palette.mode === "dark"
+                ? "rgba(15,23,42,0.6)"
+                : "rgba(255,255,255,0.9)",
+
+            borderRadius: 3,
+            p: "4px",
+            border: "1px solid #6366f1",
+
+            boxShadow: (theme) =>
+              theme.palette.mode === "dark"
+                ? "0 0 15px rgba(99,102,241,0.3)"
+                : "0 4px 15px rgba(99,102,241,0.15)",
+
+            "& .MuiToggleButton-root": {
+              border: "none",
+              color: "#6366f1",
+              px: 3,
+              transition: "0.2s",
+            },
+
+            "& .Mui-selected": {
+              color: (theme) =>
+                theme.palette.mode === "dark" ? "#00ff9c" : "#2563eb",
+
+              background: (theme) =>
+                theme.palette.mode === "dark"
+                  ? "rgba(0,255,156,0.1)"
+                  : "rgba(37,99,235,0.1)",
+
+              boxShadow: (theme) =>
+                theme.palette.mode === "dark"
+                  ? "0 0 12px #00ff9c"
+                  : "0 0 8px rgba(37,99,235,0.4)",
+            },
+          }}
         >
           <ToggleButton value="30M">30 Min</ToggleButton>
           <ToggleButton value="1H">1 Hour</ToggleButton>
@@ -257,11 +355,12 @@ export default function TrendsPage() {
         />
       </Stack>
 
+      {/* PARAM SELECT */}
       <ToggleButtonGroup
         value={overlayMode ? selectedParams : selectedParams[0]}
         exclusive={!overlayMode}
         onChange={handleParamSelect}
-        sx={{ flexWrap: "wrap", marginBottom: 3 }}
+        sx={{ flexWrap: "wrap", mb: 3 }}
       >
         {Object.keys(colors)
           .filter((k) => k !== "aqi")
@@ -271,11 +370,35 @@ export default function TrendsPage() {
               value={key}
               sx={{
                 color: colors[key],
-                borderColor: colors[key],
-                "&.Mui-selected": {
-                  backgroundColor: colors[key],
-                  color: "#fff",
+                border: `1px solid ${colors[key]}`,
+                borderRadius: 2,
+                transition: "0.25s",
+
+                background: (theme) =>
+                  theme.palette.mode === "dark"
+                    ? "rgba(255,255,255,0.02)"
+                    : "rgba(255,255,255,0.8)",
+
+                "&:hover": {
+                  boxShadow: (theme) =>
+                    theme.palette.mode === "dark"
+                      ? `0 0 12px ${colors[key]}`
+                      : `0 0 8px ${colors[key]}40`,
+                    transform: "scale(1.04)",
                 },
+
+                "&.Mui-selected": {
+                  color: "#ffffff", // ✅ always white text
+
+                  background: `${colors[key]}CC`, // 🔥 stronger background (better contrast)
+
+                  fontWeight: 600,
+
+                  boxShadow: (theme) =>
+                  theme.palette.mode === "dark"
+                    ? `0 0 12px ${colors[key]}`
+                    : `0 0 8px ${colors[key]}40`,
+                }
               }}
             >
               {key.toUpperCase()}
@@ -283,60 +406,55 @@ export default function TrendsPage() {
           ))}
       </ToggleButtonGroup>
 
-      <Paper sx={{ padding: 3, borderRadius: 3 }}>
-        <Box sx={{ width: "100%", display: "flex", justifyContent: "center" }}>
-          <ResponsiveContainer width="98%" height={450}>
-            <LineChart
-              data={data}
-              margin={{ top: 20, right: 80, left: 100, bottom: 20 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
+      {/* PARAM GRAPH */}
+      <Paper
+        sx={{
+          p: 3,
+          borderRadius: 4,
+          backdropFilter: "blur(18px)",
+          background: (theme) =>
+            theme.palette.mode === "dark"
+              ? "rgba(15,23,42,0.6)"
+              : "rgba(255,255,255,0.95)",
+          border: `1px solid ${colors[leftParam]}`,
+          boxShadow: `0 0 25px ${colors[leftParam]}40`,
+        }}
+      >
+        <ResponsiveContainer width="98%" height={450}>
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="time" />
+            <YAxis
+              yAxisId="left"
+              domain={getDynamicDomain(leftParam)}
+              allowDataOverflow={false}
+              tickCount={6}
+            />
+            {rightParam && <YAxis yAxisId="right" orientation="right" />}
+            <Tooltip content={<CustomTooltip />} />
+            <Legend />
 
-              <YAxis
-                yAxisId="left"
-                domain={getDynamicDomain(leftParam)}
-                stroke={colors[leftParam]}
-                tickFormatter={(v) => Number(v).toFixed(3)}
-              />
+            <Line
+              yAxisId="left"
+              dataKey={leftParam}
+              stroke={colors[leftParam]}
+              strokeWidth={3}
+              dot={false}
+            />
 
-              {rightParam && (
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  domain={getDynamicDomain(rightParam)}
-                  stroke={colors[rightParam]}
-                  tickFormatter={(v) => Number(v).toFixed(3)}
-                />
-              )}
-
-              <Tooltip content={<CustomTooltip />} />
-              <Legend />
-
+            {rightParam && (
               <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey={leftParam}
-                stroke={colors[leftParam]}
+                yAxisId="right"
+                dataKey={rightParam}
+                stroke={colors[rightParam]}
                 strokeWidth={3}
                 dot={false}
               />
+            )}
 
-              {rightParam && (
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey={rightParam}
-                  stroke={colors[rightParam]}
-                  strokeWidth={3}
-                  dot={false}
-                />
-              )}
-
-              <Brush dataKey="time" height={30} />
-            </LineChart>
-          </ResponsiveContainer>
-        </Box>
+            <Brush dataKey="time" height={30} />
+          </LineChart>
+        </ResponsiveContainer>
       </Paper>
     </>
   );

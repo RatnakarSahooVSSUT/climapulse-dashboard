@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc;        /* soft light (better than pure white) */
+  --foreground: #0f172a;
+
+  --card-bg: #ffffff;
+  --border-color: rgba(0, 0, 0, 0.08);
 }
 
 @theme inline {
@@ -14,13 +17,49 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #020617;     /* deep dark (better than #000) */
+    --foreground: #e2e8f0;
+
+    --card-bg: #0f172a;
+    --border-color: rgba(255, 255, 255, 0.08);
   }
 }
 
+/* 🌐 BODY */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+
+  /* ✨ smooth feel */
+  transition: background 0.3s ease, color 0.3s ease;
+
+  /* better text rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 🔥 SELECTION (premium feel) */
+::selection {
+  background: #3b82f6;
+  color: white;
+}
+
+/* 🔥 SCROLLBAR (very premium UI touch) */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3b82f6;
+  border-radius: 10px;
+}
+
+/* 🔥 SMOOTH SCROLL */
+html {
+  scroll-behavior: smooth;
 }
