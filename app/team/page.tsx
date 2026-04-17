@@ -31,26 +31,10 @@ const teamMembers = [
     name: "Priyadarshani Mahapatra",
     role: "Research & System Design",
     image: "/team/priyadarshani.jpg",
-    email: "#",
-    linkedin: "#",
+    email: "mailto:mahapatrapriyadarshani2005@gmail.com",
+    linkedin: "https://www.linkedin.com/in/priyadarshani-mahapatra-2a15a8313/",
     github: "#",
-  },
-  {
-    name: "Sohan Kumar Nayak",
-    role: "Data & Hardware Integration",
-    image: "/team/sohan.jpg",
-    email: "#",
-    linkedin: "#",
-    github: "#",
-  },
-  {
-    name: "Pritam Das Adhikari",
-    role: "Deployment & Testing",
-    image: "/team/pritam.jpg",
-    email: "#",
-    linkedin: "#",
-    github: "#",
-  },
+  }
 ];
 
 export default function TeamPage() {
